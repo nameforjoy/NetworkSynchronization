@@ -9,7 +9,7 @@ copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
 * The use of this code or any modified version in academic publications is 
-allowed with proper refere to the author (J. Climaco).
+allowed with proper reference to the author (J. Climaco).
 
 * The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
