@@ -7,7 +7,7 @@ import numpy as np
 from scipy.integrate import odeint
 from odeintw import odeintw
 
-class StuartLandau:
+class StuartLandau(object):
     
     """ Class defining a Stuart-Landau network object. 
         Holds the most important network properties of a network formed by N Stuart-Landau 
@@ -35,18 +35,41 @@ class StuartLandau:
         
         self.type = 'StuartLandau'                     # Network type
         self.w = w                                     # Natural frequencies
-        self.N = np.size(w)                            # Number of oscillators
         self.A = A                                     # Adjacency matrix
         self.alpha = alpha                             # SL limit cycle parameter
         self.K = K                                     # Coupling constant
-        self.edges = np.transpose(np.nonzero(A))       # Edges indexes
-        self.Ne = np.size(self.edges,0)                # Nunber of edges
         self.F = F                                     # Force strength
         self.Omega = Omega                             # Frenquency of force
-        self.forced_osc = np.nonzero(F)                # Forced oscillators' indexes
-        self.f = np.size(self.forced_osc)/self.N       # Fraction of forced oscillators
         self.systype = systype                         # System type
         
+        # Describes the coupling distribution
+        self.dist = {'type' : None, 
+                    'shape' : None,
+                    'scale' : None,
+                    'loc' : None,
+                    'mean' : None,
+                    'std' : None}
+    
+    @property
+    def N(self): # Number of oscillators
+        return np.size(self.w)
+
+    @property
+    def edges(self): # indexes of the network edges
+        return np.transpose(np.nonzero(self.A))
+
+    @property
+    def Ne(self): # Number of edges
+        return np.size(self.edges,0)
+
+    @property
+    def forced_osc(self): # Forced oscillators' indexes
+        return np.nonzero(self.F)
+    
+    @property
+    def f(self): # Fraction of forced oscillators
+        return np.size(self.forced_osc)/self.N
+
     def __call__(self, z, t=0):
         
         """ Makes the StuartLandau object a callable function corresponding to the ODE system
@@ -162,7 +185,7 @@ class StuartLandau:
         if self.systype =='polar':
             
             # Jacobian for polar coordinates
-            def Jac(z, t=0):
+            def pJac(z, t=0):
                 
                 z = np.reshape(z, (2,self.N))
                 rho = z[0]
@@ -193,7 +216,7 @@ class StuartLandau:
             theta0 = np.angle(z0)
             z0 = np.concatenate((rho0,theta0), axis=0)
 
-            z = odeint(self, z0, t, Dfun=Jac).T
+            z = odeint(self, z0, t, Dfun=pJac).T
             rho = z[:self.N]
             theta = z[self.N:]
             z = rho*np.exp(1j*theta)
@@ -201,7 +224,7 @@ class StuartLandau:
         if self.systype =='rectangular':
             
             # Jacobian for rectangular coordinates
-            def Jac(z, t=0):
+            def rJac(z, t=0):
                 
                 z = np.reshape(z, (2,self.N))
                 x = z[0]
@@ -227,14 +250,14 @@ class StuartLandau:
             y0 = np.imag(z0)
             z0 = np.concatenate((x0,y0), axis=0)
             
-            z = odeint(self, z0, t, Dfun=Jac).T
+            z = odeint(self, z0, t, Dfun=rJac).T
             x = z[:self.N]
             y = z[self.N:]
             z = x + 1j*y
             
         return z, t
     
-class KuramotoNetwork:
+class KuramotoNetwork(object):
     
     """ Class defining a Kuramoto network object. 
         Holds the most important properties of a network formed by N Kuramoto oscillators, 
@@ -254,20 +277,43 @@ class KuramotoNetwork:
             Frequency of the external force
     """
     
-    def __init__(self, w, A, K, F=None, Omega=0):
+    def __init__(self, w, A, K, F=None, Omega=0, rot_frame=False):
         
         self.type = 'Kuramoto'                         # Network type
         self.w = w                                     # Natural frequencies
-        self.N = np.size(w)                            # Number of oscillators
         self.A = A                                     # Adjacency matrix
         self.K = K                                     # Coupling constant
-        self.edges = np.transpose(np.nonzero(A))       # Edges indexes
-        self.Ne = np.size(self.edges,0)                # Nunber of edges
         self.F = F                                     # Force strength
         self.Omega = Omega                             # Frenquency of force
-        self.forced_osc = np.nonzero(F)                # Forced oscillators' indexes
-        self.f = np.size(self.forced_osc)/self.N       # Fraction of forced oscillators
+        self.rot_frame = rot_frame                     # Defines the phase reference frame
+        
+        # Describes the coupling distribution
+        self.dist = {'type' : None, 
+                    'shape' : None,
+                    'scale' : None,
+                    'loc' : None,
+                    'mean' : None,
+                    'std' : None}
 
+    @property
+    def N(self): # Number of oscillators
+        return np.size(self.w)
+
+    @property
+    def edges(self): # indexes of the network edges
+        return np.transpose(np.nonzero(self.A))
+
+    @property
+    def Ne(self): # Number of edges
+        return np.size(self.edges,0)
+
+    @property
+    def forced_osc(self): # Forced oscillators' indexes
+        return np.nonzero(self.F)
+    
+    @property
+    def f(self): # Fraction of forced oscillators
+        return np.size(self.forced_osc)/self.N
 
     def __call__(self, theta, t=0):
         
@@ -281,6 +327,10 @@ class KuramotoNetwork:
         for i in range(self.N):     
             thetadot[i] += self.w[i]
         
+        # Adds the forced frequency for the forced case in the rotating frame
+        if self.rot_frame:
+            thetadot[i] -= self.Omega
+        
         # Coupling terms
         for k in range(self.Ne): # loops only through the nonzero elements of A
             [i, j] = self.edges[k]
@@ -288,8 +338,14 @@ class KuramotoNetwork:
         
         # Forced terms (if there are any)
         if self.F is not None:
-            for i in self.forced_osc:
-                thetadot[i] += self.F[i] * np.sin(t*self.Omega - theta[i])
+            # If the reference frame rotating with the force
+            if self.rot_frame:
+                for i in self.forced_osc:
+                    thetadot[i] -= self.F[i] * np.sin(theta[i])
+            # If we use the still frame of reference
+            else:
+                for i in self.forced_osc:
+                    thetadot[i] += self.F[i] * np.sin(t*self.Omega - theta[i])
                 
         return thetadot
     
@@ -330,8 +386,12 @@ class KuramotoNetwork:
                 jac[i, j] = self.K * self.A[i,j] * np.cos(theta[j] - theta[i])
                 
             if self.F is not None:
-                for i in self.forced_osc:
-                    jac[i,i] += - self.F[i] * np.cos(t*self.Omega - theta[i])
+                if self.rot_frame:
+                    for i in self.forced_osc:
+                        jac[i,i] -= self.F[i] * np.cos(theta[i])
+                else: 
+                    for i in self.forced_osc:
+                        jac[i,i] -= self.F[i] * np.cos(t*self.Omega - theta[i])
             
             return jac
             
